@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>ArboMap — Navegação Florestal Offline</title>
+<meta name="description" content="ArboMap: mapas georreferenciados offline para engenharia florestal">
+<meta name="theme-color" content="#0d1f17">
+
+<!-- PWA -->
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="assets/icons/icon-192.png">
+
+<!-- Leaflet -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<!-- Leaflet.draw (ferramentas de desenho) -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css">
+<!-- Ícones -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body data-theme="dark">
+
+<!-- ============================================================
+     TELA DE CARREGAMENTO
+============================================================ -->
+<div id="splash-screen">
+  <div class="splash-logo">
+    <i class="bi bi-tree-fill"></i>
+    <span>ArboMap</span>
+  </div>
+  <div class="splash-bar"><div class="splash-bar-fill"></div></div>
+  <p class="splash-hint">Carregando mapas e dados offline…</p>
+</div>
+
+<!-- ============================================================
+     BARRA SUPERIOR
+============================================================ -->
+<header id="top-bar">
+  <button id="btn-menu" class="icon-btn" title="Menu" aria-label="Abrir menu">
+    <i class="bi bi-list"></i>
+  </button>
+
+  <div class="brand">
+    <i class="bi bi-tree-fill"></i>
+    <span>ArboMap</span>
+  </div>
+
+  <!-- Barra de pesquisa -->
+  <div class="search-box">
+    <i class="bi bi-search"></i>
+    <input id="search-input" type="text" placeholder="Pesquisar coordenadas, waypoint ou nome…">
+  </div>
+
+  <div class="top-bar-actions">
+    <span id="conn-status" class="badge-status" title="Estado da conexão">
+      <i class="bi bi-wifi-off"></i> Offline
+    </span>
+    <button id="btn-theme" class="icon-btn" title="Alternar modo claro/escuro">
+      <i class="bi bi-moon-stars-fill"></i>
+    </button>
+    <button id="btn-fullscreen" class="icon-btn" title="Tela cheia">
+      <i class="bi bi-arrows-fullscreen"></i>
+    </button>
+  </div>
+</header>
+
+<!-- ============================================================
+     MENU LATERAL
+============================================================ -->
+<nav id="side-menu" class="hidden">
+  <div class="side-menu-header">
+    <span>Camadas &amp; Arquivos</span>
+    <button id="btn-close-menu" class="icon-btn"><i class="bi bi-x-lg"></i></button>
+  </div>
+
+  <div class="side-menu-section">
+    <h6>Carregar mapa / dados</h6>
+    <button class="menu-item" data-action="load-geopdf"><i class="bi bi-file-earmark-pdf"></i> GeoPDF</button>
+    <button class="menu-item" data-action="load-geotiff"><i class="bi bi-image"></i> GeoTIFF</button>
+    <button class="menu-item" data-action="load-image"><i class="bi bi-file-earmark-image"></i> JPG / PNG</button>
+    <button class="menu-item" data-action="load-mbtiles"><i class="bi bi-grid-3x3-gap"></i> MBTiles</button>
+    <button class="menu-item" data-action="load-gpx"><i class="bi bi-signpost-split"></i> GPX</button>
+    <button class="menu-item" data-action="load-kml"><i class="bi bi-globe-americas"></i> KML</button>
+    <button class="menu-item" data-action="load-geojson"><i class="bi bi-vector-pen"></i> GeoJSON</button>
+    <button class="menu-item" data-action="load-shapefile"><i class="bi bi-file-earmark-zip"></i> Shapefile (.zip)</button>
+    <input type="file" id="file-input" hidden>
+  </div>
+
+  <div class="side-menu-section">
+    <h6>Camadas carregadas</h6>
+    <ul id="layers-list" class="layers-list">
+      <li class="empty-hint">Nenhuma camada carregada</li>
+    </ul>
+  </div>
+
+  <div class="side-menu-section">
+    <h6>Base cartográfica</h6>
+    <select id="basemap-select" class="form-select-sm">
+      <option value="osm">OpenStreetMap</option>
+      <option value="satellite">Satélite (Esri)</option>
+      <option value="topo">Topográfico (OpenTopoMap)</option>
+      <option value="none">Sem base (só camadas locais)</option>
+    </select>
+  </div>
+
+  <div class="side-menu-footer">
+    <button class="menu-item" data-action="open-settings"><i class="bi bi-gear"></i> Configurações</button>
+    <button class="menu-item" data-action="open-storage"><i class="bi bi-hdd-stack"></i> Armazenamento offline</button>
+  </div>
+</nav>
+<div id="side-menu-backdrop" class="hidden"></div>
+
+<!-- ============================================================
+     MAPA
+============================================================ -->
+<main id="map"></main>
+
+<!-- HUD sobre o mapa: bússola, escala, coordenadas -->
+<div id="hud-top-right">
+  <div id="compass" title="Bússola / rotação do mapa">
+    <svg viewBox="0 0 100 100" id="compass-svg">
+      <circle cx="50" cy="50" r="46" class="compass-ring"/>
+      <text x="50" y="14" class="compass-n">N</text>
+      <polygon points="50,10 44,55 50,48 56,55" class="compass-needle"/>
+    </svg>
+  </div>
+  <button id="btn-rotate-reset" class="icon-btn small" title="Redefinir rotação"><i class="bi bi-arrow-repeat"></i></button>
+</div>
+
+<div id="hud-bottom-left">
+  <div id="coord-cursor" class="hud-chip"><i class="bi bi-cursor"></i> <span>--</span></div>
+  <div id="coord-gps" class="hud-chip"><i class="bi bi-geo-alt-fill"></i> <span>GPS: sem sinal</span></div>
+</div>
+
+<div id="hud-bottom-right">
+  <div id="scale-box"></div>
+</div>
+
+<!-- Zoom / navegação -->
+<div id="map-controls">
+  <button id="btn-zoom-in" class="icon-btn map-ctrl" title="Aproximar"><i class="bi bi-plus-lg"></i></button>
+  <button id="btn-zoom-out" class="icon-btn map-ctrl" title="Afastar"><i class="bi bi-dash-lg"></i></button>
+  <button id="btn-locate" class="icon-btn map-ctrl accent" title="Centralizar em minha localização"><i class="bi bi-crosshair"></i></button>
+</div>
+
+<!-- ============================================================
+     BARRA INFERIOR (ferramentas)
+============================================================ -->
+<footer id="bottom-bar">
+  <button class="bottom-item" data-panel="panel-gps"><i class="bi bi-broadcast"></i><span>GPS / Trilha</span></button>
+  <button class="bottom-item" data-panel="panel-draw"><i class="bi bi-vector-pen"></i><span>Desenho</span></button>
+  <button class="bottom-item" data-panel="panel-waypoints"><i class="bi bi-geo-alt"></i><span>Waypoints</span></button>
+  <button class="bottom-item" data-panel="panel-forest"><i class="bi bi-tree"></i><span>Eng. Florestal</span></button>
+  <button class="bottom-item" data-panel="panel-export"><i class="bi bi-download"></i><span>Exportar</span></button>
+</footer>
+
+<!-- ============================================================
+     PAINEL: GPS / TRILHA
+============================================================ -->
+<section class="side-panel hidden" id="panel-gps">
+  <div class="panel-header"><h5><i class="bi bi-broadcast"></i> GPS &amp; Trilha</h5><button class="icon-btn panel-close"><i class="bi bi-x-lg"></i></button></div>
+  <div class="panel-body">
+    <div class="gps-grid">
+      <div><label>Latitude</label><span id="gps-lat">--</span></div>
+      <div><label>Longitude</label><span id="gps-lon">--</span></div>
+      <div><label>Precisão</label><span id="gps-acc">--</span></div>
+      <div><label>Altitude</label><span id="gps-alt">--</span></div>
+      <div><label>Velocidade</label><span id="gps-speed">--</span></div>
+      <div><label>Direção</label><span id="gps-heading">--</span></div>
+      <div class="full"><label>Última atualização</label><span id="gps-time">--</span></div>
+    </div>
+
+    <hr>
+    <h6>Gravação de trilha</h6>
+    <div class="track-stats">
+      <div><label>Distância</label><span id="track-dist">0 m</span></div>
+      <div><label>Tempo</label><span id="track-time">00:00:00</span></div>
+      <div><label>Vel. média</label><span id="track-avg">0 km/h</span></div>
+      <div><label>Vel. máxima</label><span id="track-max">0 km/h</span></div>
+    </div>
+    <div class="btn-row">
+      <button id="btn-track-start" class="btn-primary"><i class="bi bi-play-fill"></i> Iniciar</button>
+      <button id="btn-track-pause" class="btn-secondary" disabled><i class="bi bi-pause-fill"></i> Pausar</button>
+      <button id="btn-track-stop" class="btn-danger" disabled><i class="bi bi-stop-fill"></i> Finalizar</button>
+    </div>
+    <div class="btn-row">
+      <button class="btn-outline export-track" data-format="gpx">Exportar GPX</button>
+      <button class="btn-outline export-track" data-format="geojson">Exportar GeoJSON</button>
+      <button class="btn-outline export-track" data-format="kml">Exportar KML</button>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     PAINEL: DESENHO / MEDIÇÕES
+============================================================ -->
+<section class="side-panel hidden" id="panel-draw">
+  <div class="panel-header"><h5><i class="bi bi-vector-pen"></i> Desenho &amp; Medição</h5><button class="icon-btn panel-close"><i class="bi bi-x-lg"></i></button></div>
+  <div class="panel-body">
+    <h6>Ferramentas</h6>
+    <div class="tool-grid">
+      <button class="tool-btn" data-tool="marker"><i class="bi bi-geo-alt"></i>Ponto</button>
+      <button class="tool-btn" data-tool="polyline"><i class="bi bi-slash-lg"></i>Linha</button>
+      <button class="tool-btn" data-tool="polygon"><i class="bi bi-pentagon"></i>Polígono</button>
+      <button class="tool-btn" data-tool="circle"><i class="bi bi-circle"></i>Círculo</button>
+      <button class="tool-btn" data-tool="rectangle"><i class="bi bi-square"></i>Retângulo</button>
+      <button class="tool-btn" data-tool="edit"><i class="bi bi-pencil"></i>Editar</button>
+      <button class="tool-btn" data-tool="delete"><i class="bi bi-trash"></i>Apagar</button>
+    </div>
+    <hr>
+    <h6>Medição rápida</h6>
+    <div class="btn-row">
+      <button id="btn-measure-dist" class="btn-outline"><i class="bi bi-rulers"></i> Distância</button>
+      <button id="btn-measure-area" class="btn-outline"><i class="bi bi-bounding-box"></i> Área</button>
+    </div>
+    <div id="measure-result" class="result-box hidden"></div>
+
+    <hr>
+    <h6>Geometrias desenhadas</h6>
+    <ul id="shapes-list" class="layers-list"><li class="empty-hint">Nenhuma geometria</li></ul>
+  </div>
+</section>
+
+<!-- ============================================================
+     PAINEL: WAYPOINTS
+============================================================ -->
+<section class="side-panel hidden" id="panel-waypoints">
+  <div class="panel-header"><h5><i class="bi bi-geo-alt"></i> Waypoints</h5><button class="icon-btn panel-close"><i class="bi bi-x-lg"></i></button></div>
+  <div class="panel-body">
+    <button id="btn-new-waypoint" class="btn-primary full-width"><i class="bi bi-plus-circle"></i> Novo waypoint (posição GPS)</button>
+    <p class="hint-text">Ou toque no mapa com a ferramenta "Ponto" ativa.</p>
+    <ul id="waypoints-list" class="layers-list"><li class="empty-hint">Nenhum waypoint criado</li></ul>
+  </div>
+</section>
+
+<!-- ============================================================
+     PAINEL: ENGENHARIA FLORESTAL
+============================================================ -->
+<section class="side-panel hidden" id="panel-forest">
+  <div class="panel-header"><h5><i class="bi bi-tree"></i> Engenharia Florestal</h5><button class="icon-btn panel-close"><i class="bi bi-x-lg"></i></button></div>
+  <div class="panel-body">
+    <h6>Talhões</h6>
+    <div class="btn-row">
+      <button id="btn-talhao-desenhar" class="btn-outline"><i class="bi bi-pentagon"></i> Desenhar talhão</button>
+    </div>
+    <div id="talhao-result" class="result-box hidden"></div>
+
+    <hr>
+    <h6>Declividade</h6>
+    <p class="hint-text">Marque dois pontos (base e topo) e informe a diferença de elevação para estimar a declividade entre eles.</p>
+    <div class="btn-row">
+      <button id="btn-declividade" class="btn-outline"><i class="bi bi-graph-up-arrow"></i> Medir declividade</button>
+    </div>
+    <div id="declividade-result" class="result-box hidden"></div>
+
+    <hr>
+    <h6>Árvores &amp; Parcelas</h6>
+    <div class="btn-row">
+      <button id="btn-marcar-parcela" class="btn-outline"><i class="bi bi-bounding-box-circles"></i> Marcar parcela</button>
+      <button id="btn-marcar-arvore" class="btn-outline"><i class="bi bi-tree-fill"></i> Marcar árvore</button>
+    </div>
+    <div class="form-row">
+      <label><input type="checkbox" id="chk-auto-numero" checked> Numeração automática de árvores</label>
+    </div>
+    <div class="btn-row">
+      <button id="btn-dist-arvores" class="btn-outline full-width"><i class="bi bi-rulers"></i> Medir distância entre árvores marcadas</button>
+    </div>
+    <div id="arvores-result" class="result-box hidden"></div>
+    <ul id="arvores-list" class="layers-list"></ul>
+  </div>
+</section>
+
+<!-- ============================================================
+     PAINEL: EXPORTAR
+============================================================ -->
+<section class="side-panel hidden" id="panel-export">
+  <div class="panel-header"><h5><i class="bi bi-download"></i> Exportar dados</h5><button class="icon-btn panel-close"><i class="bi bi-x-lg"></i></button></div>
+  <div class="panel-body">
+    <p class="hint-text">Exporta waypoints, trilhas e geometrias desenhadas (talhões, árvores, parcelas).</p>
+    <div class="btn-row col">
+      <button class="btn-outline export-all" data-format="gpx"><i class="bi bi-signpost-split"></i> GPX</button>
+      <button class="btn-outline export-all" data-format="geojson"><i class="bi bi-vector-pen"></i> GeoJSON</button>
+      <button class="btn-outline export-all" data-format="kml"><i class="bi bi-globe-americas"></i> KML</button>
+      <button class="btn-outline export-all" data-format="csv"><i class="bi bi-filetype-csv"></i> CSV (waypoints)</button>
+      <button class="btn-outline export-all" data-format="pdf"><i class="bi bi-file-earmark-pdf"></i> PDF (relatório + mapa)</button>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     MODAL: CONFIGURAÇÕES
+============================================================ -->
+<div class="modal-overlay hidden" id="modal-settings">
+  <div class="modal-box">
+    <div class="panel-header"><h5><i class="bi bi-gear"></i> Configurações</h5><button class="icon-btn modal-close"><i class="bi bi-x-lg"></i></button></div>
+    <div class="panel-body">
+      <div class="form-row">
+        <label>Formato de coordenadas</label>
+        <select id="cfg-coord-format" class="form-select-sm">
+          <option value="dd">Latitude / Longitude (graus decimais)</option>
+          <option value="dms">Latitude / Longitude (GMS)</option>
+          <option value="utm">UTM</option>
+          <option value="mgrs">MGRS</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label>Unidades</label>
+        <select id="cfg-units" class="form-select-sm">
+          <option value="metric">Métrico (m / km / ha)</option>
+          <option value="imperial">Imperial (ft / mi / ac)</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label>Idioma</label>
+        <select id="cfg-lang" class="form-select-sm">
+          <option value="pt-BR">Português (Brasil)</option>
+          <option value="en">English</option>
+          <option value="es">Español</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label>Precisão mínima de GPS aceita (m)</label>
+        <input type="number" id="cfg-gps-accuracy" class="form-input-sm" value="15" min="1" max="100">
+      </div>
+      <button id="btn-save-settings" class="btn-primary full-width">Salvar configurações</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     MODAL: ARMAZENAMENTO OFFLINE
+============================================================ -->
+<div class="modal-overlay hidden" id="modal-storage">
+  <div class="modal-box">
+    <div class="panel-header"><h5><i class="bi bi-hdd-stack"></i> Armazenamento offline</h5><button class="icon-btn modal-close"><i class="bi bi-x-lg"></i></button></div>
+    <div class="panel-body">
+      <div id="storage-info" class="result-box">Calculando uso de armazenamento…</div>
+      <button id="btn-clear-storage" class="btn-danger full-width"><i class="bi bi-trash"></i> Limpar todos os dados offline</button>
+      <p class="hint-text">Mapas, waypoints, trilhas e geometrias são salvos automaticamente no dispositivo (IndexedDB) e continuam disponíveis sem internet.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     MODAL: EDITAR WAYPOINT / ÁRVORE (genérico)
+============================================================ -->
+<div class="modal-overlay hidden" id="modal-feature">
+  <div class="modal-box">
+    <div class="panel-header"><h5 id="modal-feature-title">Waypoint</h5><button class="icon-btn modal-close"><i class="bi bi-x-lg"></i></button></div>
+    <div class="panel-body">
+      <div class="form-row"><label>Nome</label><input type="text" id="feat-name" class="form-input-sm"></div>
+      <div class="form-row"><label>Descrição</label><textarea id="feat-desc" class="form-input-sm" rows="3"></textarea></div>
+      <div class="form-row"><label>Coordenadas</label><span id="feat-coords" class="mono"></span></div>
+      <div class="form-row"><label>Data</label><span id="feat-date" class="mono"></span></div>
+      <div class="form-row">
+        <label>Fotografia</label>
+        <input type="file" id="feat-photo-input" accept="image/*" capture="environment">
+        <img id="feat-photo-preview" class="hidden">
+      </div>
+      <div class="form-row">
+        <label>Áudio</label>
+        <button id="btn-record-audio" class="btn-outline"><i class="bi bi-mic"></i> Gravar áudio</button>
+        <audio id="feat-audio-preview" controls class="hidden"></audio>
+      </div>
+      <div class="btn-row">
+        <button id="btn-save-feature" class="btn-primary">Salvar</button>
+        <button id="btn-delete-feature" class="btn-danger">Excluir</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     MODAL: GEORREFERENCIAMENTO MANUAL (fallback)
+============================================================ -->
+<div class="modal-overlay hidden" id="modal-georef">
+  <div class="modal-box wide">
+    <div class="panel-header"><h5><i class="bi bi-pin-map"></i> Georreferenciamento manual</h5><button class="icon-btn modal-close"><i class="bi bi-x-lg"></i></button></div>
+    <div class="panel-body">
+      <p class="hint-text" id="georef-explain">
+        Não foi possível detectar georreferenciamento automático neste arquivo. Marque pelo menos 2 pontos de controle
+        (um ponto na imagem + a coordenada real correspondente) para posicionar o mapa.
+      </p>
+      <div id="georef-canvas-wrap"><canvas id="georef-canvas"></canvas></div>
+      <div id="georef-points-list"></div>
+      <div class="btn-row">
+        <button id="btn-georef-apply" class="btn-primary">Aplicar georreferenciamento</button>
+        <button id="btn-georef-cancel" class="btn-secondary">Cancelar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Toasts -->
+<div id="toast-container"></div>
+
+<!-- ============================================================
+     BIBLIOTECAS EXTERNAS (CDN)
+============================================================ -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/proj4@2.11.0/dist/proj4.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@turf/turf@6.5.0/turf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/localforage@1.10.0/dist/localforage.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/geotiff@2.1.3/dist-browser/geotiff.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/shpjs@4.0.4/dist/shp.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tmcw/togeojson@5.8.1/dist/togeojson.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tokml@0.4.0/tokml.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sql.js@1.10.3/dist/sql-wasm.js"></script>
+
+<!-- ============================================================
+     CÓDIGO DA APLICAÇÃO
+============================================================ -->
+<script src="js/offline.js"></script>
+<script src="js/georef.js"></script>
+<script src="js/map.js"></script>
+<script src="js/gps.js"></script>
+<script src="js/pdf.js"></script>
+<script src="js/drawing.js"></script>
+<script src="js/export.js"></script>
+<script src="js/app.js"></script>
+
+</body>
+</html>
